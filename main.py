@@ -1,95 +1,120 @@
 import sys
 import io
 import sqlite3
+import datetime
 import folium
 from PyQt6 import uic
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import QApplication, QMainWindow, QTableWidgetItem, QInputDialog, QMessageBox, QPlainTextEdit
+from PyQt6.QtWidgets import QApplication, QMainWindow, QTableWidgetItem, QMessageBox
+import requests
+from bs4 import BeautifulSoup
+import math
 
-DATABASE = "ProjDb.db"
+USER_DATABASE = "C:/Users/andre/Downloads/project_db.db"
+ECO_DATABASE = "C:/Users/andre/Downloads/air_noise.db"
 
-MOS_COORDS = [([55.749853, 37.537020], 'Москва-Сити', 8, 8), ([55.713126, 37.541422], 'Воробьевы Горы', 5.9, 4.1),
-              ([55.628241, 37.563677], 'Битца', 2.3, 1.1), ([55.763637, 37.445481], 'Строгино', 4.5, 3),
-              ([55.816686, 37.611600], 'ВДНХ', 7, 7), ([55.627512, 37.694004], 'Царицыно', 6.9, 7),
-              ([55.848843, 37.728767], 'Лосиный Остров', 1.2, 1), ([55.659942, 37.662291], 'Коломенское', 7.4, 6),
-              ([55.731220, 37.600704], 'Парк Горького', 6.8, 7),
-              ([55.698837, 37.707587], 'Нагатинский Затон', 6.9, 6.9),
-              ([55.751169, 37.612464], 'Красная Площадь', 7.7, 8), ([55.844008, 37.468894], 'Речной вокзал', 6.9, 6),
-              ([55.775228, 37.763203], 'Измайлово', 2.1, 1.7), ([55.656637, 37.467807], 'Тропарево', 5, 4),
-              ([55.814904, 37.551343], 'Тимирязевский район', 6.9, 7),
-              ([55.691032, 37.589121], 'Академический район', 7.4, 6.4),
-              ([55.675603, 37.756233], 'Люблино', 6.8, 6), ([55.656017, 37.835771], 'Котельники', 7.2, 7),
-              ([55.698872, 37.480085], 'Кинематографический квартал', 7, 7.4),
-              ([55.715932, 37.412900], 'Можайский район', 7.4, 7.4),
-              ([55.883797, 37.552636], 'Дегунино', 6.9, 6.2), ([55.876011, 37.617004], 'Медведково', 7, 5.9),
-              ([55.805857, 37.661461], 'Сокольники', 3, 1.9), ([55.767516, 37.689812], 'Лефортово', 6.1, 7.2),
-              ([55.730777, 37.815186], 'Вешняки', 6, 6.5), ([55.730777, 37.815186], 'Бирюлёво', 7, 6.7)]
+abbreviations = {'Moсква': 'MSK', 'Санкт-Петербург': 'SPB'}
+
+electro_car_rise = 1.23
+industry_greening = 1.03
+deforest = 1.04
+urbanisation = 1.32
+exhaust_fumes = 1.09
+climate_change = 0.699
+planting_level = 0.8
+recycl_level = 1.03
+prev_year_data = 0
+
+MOS_COORDS = [[(55.749853, 37.537020), 'Москва-Сити', 68], [(55.713126, 37.541422), 'Воробьевы Горы', 50],
+              [(55.628241, 37.563677), 'Битца', 20], [(55.763637, 37.445481), 'Строгино', 40],
+              [(55.816686, 37.611600), 'ВДНХ', 58], [(55.627512, 37.694004), 'Царицыно', 39],
+              [(55.848843, 37.728767), 'Лосиный Остров', 15], [(55.659942, 37.662291), 'Коломенское', 36],
+              [(55.731220, 37.600704), 'Парк Горького', 56], [(55.698837, 37.707587), 'Нагатинский Затон', 50],
+              [(55.751169, 37.612464), 'Красная Площадь', 60], [(55.844008, 37.468894), 'Речной вокзал', 51],
+              [(55.775228, 37.763203), 'Измайлово', 42], [(55.656637, 37.467807), 'Тропарево', 43],
+              [(55.814904, 37.551343), 'Тимирязевский район', 48], [(55.691032, 37.589121), 'Академический район', 44],
+              [(55.675603, 37.756233), 'Люблино', 43], [(55.656017, 37.835771), 'Котельники', 48],
+              [(55.698872, 37.480085), 'Кинематографический квартал', 51], [(55.715932, 37.412900), 'Можайский район', 48],
+              [(55.883797, 37.552636), 'Дегунино', 40], [(55.876011, 37.617004), 'Медведково', 42],
+              [(55.805857, 37.661461), 'Сокольники', 50], [(55.767516, 37.689812), 'Лефортово', 40],
+              [(55.730777, 37.815186), 'Вешняки', 47], [(55.587926, 37.637105), 'Бирюлёво', 37]]
+
+SPB_COORDS = [[(59.941081, 30.317631), 'Центр', 65], [(59.972888, 30.224723), 'Зенит арена', 54],
+              [(59.927249, 30.236472), 'Севкабель порт', 57], [(59.962177, 30.299465), 'Петроградскй остров', 50],
+              [(59.942524, 30.186356), 'Морской Порт', 62], [(59.939838, 30.260718), 'Васильевский остров', 47],
+              [(59.921963, 30.315275), 'Река Фонтанка', 53], [(59.869476, 30.328729), 'Парк Победы', 42],
+              [(59.923274, 30.385698), 'Александро-Невская Лавра', 43], [(60.021637, 30.352435), 'Парк Сосновка', 39],
+              [(59.914400, 30.467052), 'Невский район', 49], [(59.864643, 30.400984), 'Фрунзенский район', 46],
+              [(59.888202, 30.184059), 'Канонерский остров', 45], [(59.990601, 30.160678), 'Лахта', 44],
+              [(60.050234, 30.283695), 'Новоорловский Заповедник', 38],
+              [(59.957976, 30.468765), 'Красногвардейский район', 49],
+              [(60.037398, 30.282470), 'Орловский карьер', 52], [(59.973886, 30.387137), 'Полюстрово', 51]]
 
 
-class MoscowMap:
-    def __init__(self):
-        self.map = folium.Map(location=[55.751783, 37.623642], zoom_start=10)
-        self.loc = [55.751783, 37.623642]
+def modify_data(spis):
+    for el in spis:
+        url = f'https://yandex.ru/pogoda/ru-RU/details/running?lat={el[0][0]}&lon={el[0][1]}&lang=ru&via=prsw'
+        try:
+            resp = requests.get(url)
+            print(resp, url)
+            soup = BeautifulSoup(resp.text, 'lxml')
+            data = soup.findAll('li', class_='AppDetailedForecastBlock_block__item__i_RR3 blocks_alert__k9wpO blocks_regularValuesFont__TXRP_ blocks_simpleBlockPadding__8xLWE')
+            data = list(map(lambda x: int(x.text), data[:24]))
+            value = math.floor(sum(data) / len(data))
+            el.append(value)
+            print('data', data, 'el', el)
+
+        except Exception as e:
+            print(e)
+
+
+modify_data(MOS_COORDS)
+modify_data(SPB_COORDS)
+
+
+class Mapp:
+    def __init__(self, places, center):
+        self.map = folium.Map(location=center, zoom_start=10)
         self.markers = []
-        self.top_air = sorted(MOS_COORDS, key=lambda x: x[2])[:5]
-        self.top_noise = sorted(MOS_COORDS, key=lambda x: x[3])[:5]
-        for elem in MOS_COORDS:
-            air, noise = elem[2], elem[3]
-            popup = f'{elem[1]}.\n воздух-{air} шум-{noise}'
-            color = None
-            if (air + noise) / 2 <= 3:
+        self.top_air = sorted(places, key=lambda x: x[3])[:5]
+        self.top_noise = sorted(places, key=lambda x: x[2])[:5]
+        print(self.top_noise)
+        for el in places:
+            print(el)
+            n, a = el[2], el[3]
+            if n < 50 and a < 50:
                 color = '#7cfc00'
-            elif 3 < (air + noise) / 2 <= 6:
+            elif 59 > n > 50 or 200 > a > 50:
                 color = '#f7e00a'
-            elif 6 < (air + noise) / 2 <= 8:
+            elif 69 > n > 59 or 350 > a > 200:
                 color = '#f7980a'
-            else:
+            elif n > 69 or a > 350:
                 color = '#ff4500'
-            folium.Marker(elem[0], popup=popup, icon=folium.Icon(icon='cloud', color='white',
-                                                                 icon_color=color, prefix='fa')).add_to(self.map)
+            folium.Marker(el[0], popup=f'{el[1]}. воздух-{a} шум-{n}', icon=folium.Icon(icon='cloud', color='white',
+                                                             icon_color=color, prefix='fa')).add_to(self.map)
+        '''if (air + noise) / 2 <= 3:
+            color = '#7cfc00'
+        elif 3 < (air + noise) / 2 <= 6:
+            color = '#f7e00a'
+        elif 6 < (air + noise) / 2 <= 8:
+            color = '#f7980a'
+        else:
+            color = '#ff4500'
+        folium.Marker(elem[0], popup=popup, icon=folium.Icon(icon='cloud', color='white',
+                                                             icon_color=color, prefix='fa')).add_to(self.map)'''
 
     def show(self):
         self.map.show_in_browser()
 
 
-SPB_COORDS = [([59.941081, 30.317631], 'Центр', 8.2, 7.7), ([59.972888, 30.224723], 'Зенит арена', 7.1, 5.4),
-              ([59.927249, 30.236472], 'Севкабель порт', 6.8, 5), ([59.962177, 30.299465], 'Петроградскй остров', 8, 6.9),
-              ([59.942524, 30.186356], 'Морской Порт', 5.9, 4.6), ([59.939838, 30.260718], 'Васильевский остров', 7.7, 6.8),
-              ([59.921963, 30.315275], 'Река Фонтанка', 8, 7.2), ([59.869476, 30.328729], 'Парк Победы', 6, 4),
-              ([59.923274, 30.385698], 'Александро-Невская Лавра', 7, 6), ([60.021637, 30.352435], 'Парк Сосновка', 3.7, 2),
-              ([59.914400, 30.467052], 'Невский район', 7.1, 5.9),
-              ([59.864643, 30.400984], 'Фрунзенский район', 7.1, 6.2),
-              ([59.888202, 30.184059], 'Канонерский остров', 6, 4.2), ([59.990601, 30.160678], 'Лахта', 5, 4.1),
-              ([60.050234, 30.283695], 'Новоорловский Заповедник', 2.9, 1.9),
-              ([59.957976, 30.468765], 'Красногвардейский район', 7.2, 5.9),
-              ([60.037398, 30.282470], 'Орловский карьер', 6.9, 6.4), ([59.973886, 30.387137], 'Полюстрово', 7.1, 7)]
-
-
-class PeterMap:
+class MoscowMap(Mapp):
     def __init__(self):
-        self.map = folium.Map(location=[59.941081, 30.317631], zoom_start=11)
-        self.loc = [59.941081, 30.317631]
-        self.top_air = sorted(SPB_COORDS, key=lambda x: x[2])[:5]
-        self.top_noise = sorted(SPB_COORDS, key=lambda x: x[3])[:5]
-        folium.Marker([59.937224, 30.336738], popup='Центр. воздух - 8.2 шум - 7.7',
-                      icon=folium.Icon(icon='cloud', color='white', icon_color='#f7980a')).add_to(self.map)
-        for elem in SPB_COORDS:
-            air, noise = elem[2], elem[3]
-            popup = f'{elem[1]}.\n воздух-{air} шум-{noise}'
-            color = None
-            if (air + noise) / 2 <= 3:
-                color = '#7cfc00'
-            elif 3 < (air + noise) / 2 <= 6:
-                color = '#f7e00a'
-            elif 6 < (air + noise) / 2 <= 8:
-                color = '#f7980a'
-            else:
-                color = '#ff4500'
-            folium.Marker(elem[0], popup=popup, icon=folium.Icon(icon='cloud', color='white',
-                                                                 icon_color=color, prefix='fa')).add_to(self.map)
+        super().__init__(MOS_COORDS, [55.751783, 37.623642])
 
-    def show(self):
-        self.map.show_in_browser()
+
+class PeterMap(Mapp):
+    def __init__(self):
+        super().__init__(SPB_COORDS, [59.941081, 30.317631])
 
 
 template = '''
@@ -102,18 +127,30 @@ template = '''
     <x>0</x>
     <y>0</y>
     <width>1112</width>
-    <height>655</height>
+    <height>672</height>
    </rect>
   </property>
+  <property name="font">
+   <font>
+    <family>MS Shell Dlg 2</family>
+    <pointsize>10</pointsize>
+    <weight>50</weight>
+    <italic>false</italic>
+    <bold>false</bold>
+    <underline>false</underline>
+    <strikeout>false</strikeout>
+    <kerning>true</kerning>
+   </font>
+  </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Noise'N'Air</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QComboBox" name="cityChoiceBox">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>160</y>
+      <x>30</x>
+      <y>310</y>
       <width>211</width>
       <height>51</height>
      </rect>
@@ -128,92 +165,11 @@ template = '''
      <bool>true</bool>
     </property>
    </widget>
-   <widget class="QWidget" name="horizontalLayoutWidget">
-    <property name="geometry">
-     <rect>
-      <x>400</x>
-      <y>40</y>
-      <width>561</width>
-      <height>32</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <pointsize>10</pointsize>
-     </font>
-    </property>
-    <layout class="QHBoxLayout" name="horizontalLayout">
-     <item>
-      <widget class="QPushButton" name="pushButton_2">
-       <property name="font">
-        <font>
-         <pointsize>10</pointsize>
-        </font>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">background-color: rgb(124, 252, 0);
-border-radius: 10px;</string>
-       </property>
-       <property name="text">
-        <string>1-3</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="pushButton_5">
-       <property name="font">
-        <font>
-         <pointsize>10</pointsize>
-        </font>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">background-color: rgb(247, 224, 10);
-border-radius: 10px;</string>
-       </property>
-       <property name="text">
-        <string>4-6</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="pushButton_4">
-       <property name="font">
-        <font>
-         <pointsize>10</pointsize>
-        </font>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">background-color: rgb(247, 152, 10);
-border-radius: 10px;</string>
-       </property>
-       <property name="text">
-        <string>7-8</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="pushButton_3">
-       <property name="font">
-        <font>
-         <pointsize>10</pointsize>
-        </font>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">background-color: rgb(255, 69, 0);
-border-radius: 10px;</string>
-       </property>
-       <property name="text">
-        <string>9-10</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </widget>
    <widget class="QPushButton" name="apply_btn">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>440</y>
+      <x>30</x>
+      <y>460</y>
       <width>211</width>
       <height>31</height>
      </rect>
@@ -226,7 +182,8 @@ border-radius: 10px;</string>
     <property name="styleSheet">
      <string notr="true">QPushButton {
 	border-radius: 7px;
-	background-color: rgb(255, 255, 255)
+	background-color: rgb(255, 255, 255);
+	border: 1px solid rgb(110, 110, 110) 
 }
 
 QPushButton:hover {
@@ -235,14 +192,14 @@ QPushButton:hover {
 }</string>
     </property>
     <property name="text">
-     <string>применить</string>
+     <string>Применить</string>
     </property>
    </widget>
-   <widget class="QPushButton" name="feedbackButton">
+   <widget class="QPushButton" name="leave_feedback">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>520</y>
+      <x>30</x>
+      <y>530</y>
       <width>211</width>
       <height>31</height>
      </rect>
@@ -255,7 +212,8 @@ QPushButton:hover {
     <property name="styleSheet">
      <string notr="true">QPushButton {
 	border-radius: 7px;
-	background-color: rgb(255, 255, 255)
+	background-color: rgb(255, 255, 255);
+	border: 1px solid rgb(110, 110, 110)  
 }
 
 QPushButton:hover {
@@ -264,14 +222,14 @@ QPushButton:hover {
 }</string>
     </property>
     <property name="text">
-     <string>оставить отзыв</string>
+     <string>Оставить отзыв</string>
     </property>
    </widget>
    <widget class="QLabel" name="label_2">
     <property name="geometry">
      <rect>
-      <x>90</x>
-      <y>130</y>
+      <x>40</x>
+      <y>280</y>
       <width>141</width>
       <height>16</height>
      </rect>
@@ -282,16 +240,46 @@ QPushButton:hover {
      </font>
     </property>
     <property name="text">
-     <string>город:</string>
+     <string>Город:</string>
     </property>
    </widget>
-   <widget class="QLabel" name="cityLabel">
+   <widget class="QLabel" name="lbl">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>10</y>
-      <width>381</width>
-      <height>51</height>
+      <x>40</x>
+      <y>30</y>
+      <width>401</width>
+      <height>41</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>12</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Карта воздушного и шумового загрязнения
+    города</string>
+    </property>
+   </widget>
+   <widget class="QWidget" name="horizontalLayoutWidget_2">
+    <property name="geometry">
+     <rect>
+      <x>290</x>
+      <y>180</y>
+      <width>791</width>
+      <height>431</height>
+     </rect>
+    </property>
+    <layout class="QHBoxLayout" name="lay"/>
+   </widget>
+   <widget class="QCheckBox" name="air_check">
+    <property name="geometry">
+     <rect>
+      <x>50</x>
+      <y>190</y>
+      <width>191</width>
+      <height>21</height>
      </rect>
     </property>
     <property name="font">
@@ -299,27 +287,58 @@ QPushButton:hover {
       <pointsize>11</pointsize>
      </font>
     </property>
+    <property name="layoutDirection">
+     <enum>Qt::LeftToRight</enum>
+    </property>
     <property name="text">
-     <string>карта воздушного и шумового загрязнения
- города Москва</string>
+     <string>Воздух</string>
     </property>
    </widget>
-   <widget class="QWidget" name="horizontalLayoutWidget_2">
+   <widget class="QCheckBox" name="noise_check">
     <property name="geometry">
      <rect>
-      <x>290</x>
-      <y>110</y>
-      <width>791</width>
-      <height>491</height>
+      <x>50</x>
+      <y>220</y>
+      <width>191</width>
+      <height>31</height>
      </rect>
     </property>
-    <layout class="QHBoxLayout" name="lay"/>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+     </font>
+    </property>
+    <property name="layoutDirection">
+     <enum>Qt::LeftToRight</enum>
+    </property>
+    <property name="text">
+     <string>Шум</string>
+    </property>
    </widget>
-   <widget class="QPushButton" name="see_feed">
+   <widget class="QLabel" name="air_top">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>560</y>
+      <x>430</x>
+      <y>80</y>
+      <width>241</width>
+      <height>91</height>
+     </rect>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QLabel {
+	border: 1px solid rgb(10, 10, 10);
+	border-radius: 8px;
+}</string>
+    </property>
+    <property name="text">
+     <string>TextLabel</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="see_feedback">
+    <property name="geometry">
+     <rect>
+      <x>30</x>
+      <y>570</y>
       <width>211</width>
       <height>31</height>
      </rect>
@@ -332,7 +351,8 @@ QPushButton:hover {
     <property name="styleSheet">
      <string notr="true">QPushButton {
 	border-radius: 7px;
-	background-color: rgb(255, 255, 255)
+	background-color: rgb(255, 255, 255);
+	border: 1px solid rgb(110, 110, 110) 
 }
 
 QPushButton:hover {
@@ -341,16 +361,293 @@ QPushButton:hover {
 }</string>
     </property>
     <property name="text">
-     <string>посмотреть отзывы</string>
+     <string>Посмотреть отзывы</string>
     </property>
    </widget>
-   <widget class="QToolButton" name="instr_btn">
+   <widget class="QLabel" name="noise_top">
     <property name="geometry">
      <rect>
-      <x>90</x>
-      <y>90</y>
+      <x>700</x>
+      <y>80</y>
+      <width>221</width>
+      <height>91</height>
+     </rect>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QLabel {
+	border: 1px solid rgb(10, 10, 10);
+	border-radius: 8px;
+}</string>
+    </property>
+    <property name="text">
+     <string>TextLabel</string>
+    </property>
+   </widget>
+   <widget class="QDateEdit" name="dateEdit">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>100</y>
+      <width>151</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="dateTime">
+     <datetime>
+      <hour>0</hour>
+      <minute>0</minute>
+      <second>0</second>
+      <year>2025</year>
+      <month>04</month>
+      <day>24</day>
+     </datetime>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label">
+    <property name="geometry">
+     <rect>
+      <x>40</x>
+      <y>100</y>
       <width>51</width>
-      <height>26</height>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>12</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Дата</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_3">
+    <property name="geometry">
+     <rect>
+      <x>50</x>
+      <y>150</y>
+      <width>131</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Лучшие места:</string>
+    </property>
+   </widget>
+   <widget class="Line" name="line">
+    <property name="geometry">
+     <rect>
+      <x>30</x>
+      <y>140</y>
+      <width>221</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="orientation">
+     <enum>Qt::Horizontal</enum>
+    </property>
+   </widget>
+   <widget class="Line" name="line_2">
+    <property name="geometry">
+     <rect>
+      <x>30</x>
+      <y>250</y>
+      <width>221</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="orientation">
+     <enum>Qt::Horizontal</enum>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_4">
+    <property name="geometry">
+     <rect>
+      <x>520</x>
+      <y>60</y>
+      <width>55</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Воздух</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_5">
+    <property name="geometry">
+     <rect>
+      <x>780</x>
+      <y>60</y>
+      <width>55</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Шум</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="cityLabel">
+    <property name="geometry">
+     <rect>
+      <x>130</x>
+      <y>50</y>
+      <width>91</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>12</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+      <underline>true</underline>
+     </font>
+    </property>
+    <property name="text">
+     <string>Москва</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_6">
+    <property name="geometry">
+     <rect>
+      <x>440</x>
+      <y>10</y>
+      <width>31</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+    <property name="pixmap">
+     <pixmap>../../../Downloads/Thumb (1) (1).png</pixmap>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_7">
+    <property name="geometry">
+     <rect>
+      <x>880</x>
+      <y>10</y>
+      <width>41</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+    <property name="pixmap">
+     <pixmap>../../../Downloads/Remove-bg.ai_1733685943525 (1) (1).png</pixmap>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton_2">
+    <property name="geometry">
+     <rect>
+      <x>480</x>
+      <y>10</y>
+      <width>92</width>
+      <height>41</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgb(124, 252, 0);
+border-radius: 10px;</string>
+    </property>
+    <property name="text">
+     <string>0-50
+0-50</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton_5">
+    <property name="geometry">
+     <rect>
+      <x>580</x>
+      <y>10</y>
+      <width>91</width>
+      <height>41</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgb(247, 224, 10);
+border-radius: 10px;</string>
+    </property>
+    <property name="text">
+     <string>50-59
+51-250</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton_4">
+    <property name="geometry">
+     <rect>
+      <x>680</x>
+      <y>10</y>
+      <width>91</width>
+      <height>41</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgb(247, 152, 10);
+border-radius: 10px;</string>
+    </property>
+    <property name="text">
+     <string>60-69
+251-400</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton_3">
+    <property name="geometry">
+     <rect>
+      <x>780</x>
+      <y>10</y>
+      <width>91</width>
+      <height>41</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>10</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgb(255, 69, 0);
+border-radius: 10px;</string>
+    </property>
+    <property name="text">
+     <string>70+
+401+</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="forecast_btn">
+    <property name="geometry">
+     <rect>
+      <x>960</x>
+      <y>70</y>
+      <width>121</width>
+      <height>31</height>
      </rect>
     </property>
     <property name="font">
@@ -359,19 +656,65 @@ QPushButton:hover {
      </font>
     </property>
     <property name="styleSheet">
-     <string notr="true">QToolhButton {
+     <string notr="true">QPushButton {
 	border-radius: 7px;
-	background-color: rgb(255, 255, 255)
+	background-color: rgb(255, 255, 255);
+	border: 1px solid rgb(110, 110, 110) 
 }
 
-QToolButton:hover {
+QPushButton:hover {
 	background-color: rgb(245, 245, 245);
-	border: 2px solid rgb(1, 1, 1);
-	border-radius: 5px
+	border: 2px solid rgb(1, 1, 1) 
 }</string>
     </property>
     <property name="text">
-     <string>...</string>
+     <string>прогноз</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="graph_btn">
+    <property name="geometry">
+     <rect>
+      <x>960</x>
+      <y>120</y>
+      <width>121</width>
+      <height>28</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QPushButton {
+	border-radius: 7px;
+	background-color: rgb(255, 255, 255);
+	border: 1px solid rgb(110, 110, 110) 
+}
+
+QPushButton:hover {
+	background-color: rgb(245, 245, 245);
+	border: 2px solid rgb(1, 1, 1) 
+}</string>
+    </property>
+    <property name="text">
+     <string>график</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_9">
+    <property name="geometry">
+     <rect>
+      <x>880</x>
+      <y>10</y>
+      <width>31</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+    <property name="pixmap">
+     <pixmap>../../../Downloads/dislike (1).png</pixmap>
     </property>
    </widget>
   </widget>
@@ -665,25 +1008,205 @@ QPushButton:hover {
 </ui>
 '''
 
+forecast_win = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>650</width>
+    <height>262</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>ForecastWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QLabel" name="forecast_lbl">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>70</y>
+      <width>631</width>
+      <height>51</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QLabel {
+	border: 1px solid rgb(10, 10, 10);
+	border-radius: 8px;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QLabel" name="verdict_lbl">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>140</y>
+      <width>631</width>
+      <height>51</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>9</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QLabel {
+	border: 1px solid rgb(10, 10, 10);
+	border-radius: 8px;
+}</string>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QLabel" name="year_lbl">
+    <property name="geometry">
+     <rect>
+      <x>130</x>
+      <y>10</y>
+      <width>451</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>11</pointsize>
+      <weight>75</weight>
+      <bold>true</bold>
+     </font>
+    </property>
+    <property name="text">
+     <string>прогноз атомсферного загрязнеия на 2025 год</string>
+    </property>
+   </widget>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>650</width>
+     <height>26</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
+'''
 
-class InstrWindow(QMainWindow):
-    def __init__(self):
+chart_win = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>755</width>
+    <height>441</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>ChartWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QLabel" name="label">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>0</y>
+      <width>731</width>
+      <height>391</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+    <property name="pixmap">
+     <pixmap>../../../Downloads/chartV2.jpg</pixmap>
+    </property>
+   </widget>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>755</width>
+     <height>26</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
+'''
+
+
+class ChartWindow(QMainWindow):
+    def __init__(self, city1):
         super().__init__()
-        """открывает окно с инструкцией"""
-        self.setGeometry(200, 200, 700, 370)
-        self.lbl = QPlainTextEdit(self)
-        self.lbl.setGeometry(10, 10, 681, 351)
-        self.lbl.setStyleSheet('''QPlainTextEdit {
-                                                border: 1px solid rgb(10, 10, 10);
-                                                font-size: 15px;
-                                            }
-        ''')
-        s = ''
-        with open('instruction.txt', encoding='utf-8') as f:
-            for i in f.readlines():
-                s += i
-        self.lbl.setEnabled(False)
-        self.lbl.setPlainText(s)
+        f3 = io.StringIO(chart_win.strip())
+        uic.loadUi(f3, self)
+
+
+class ForecastWindow(QMainWindow):
+    def __init__(self, year1, city1):
+        super().__init__()
+        f2 = io.StringIO(forecast_win.strip())
+        uic.loadUi(f2, self)
+        self.predict(year1, city1)
+
+    def predict(self, year1, city1):
+        now = 2024
+        db = sqlite3.connect(ECO_DATABASE)
+        cur = db.cursor()
+        q = f'SELECT AVG(rate) FROM air_pollution WHERE city = "{city1}" AND year = {now}'
+        now_year_data = cur.execute(q).fetchone()[0]
+        print(now_year_data)
+        try:
+            if year1 < 2025:
+                raise ValueError
+            else:
+                delta = year1 - 2025
+                if delta:
+                    benef = [electro_car_rise, planting_level, industry_greening, recycl_level, prev_year_data]
+                    disadv = [deforest, exhaust_fumes, climate_change, urbanisation, prev_year_data]
+                    rate = sum(map(lambda x: x * delta, disadv)) / sum(map(lambda x: x * delta, benef))
+                    print(rate, delta, now_year_data)
+                    res = (rate ** delta) * now_year_data
+                    self.year_lbl.setText(f'прогноз атомсферного загрязнения на {year1} год')
+                    self.forecast_lbl.setText(f'Среднее предполагаемое загрязнение - {res:.2f}, это хороший показатель')
+                    if res > now_year_data:
+                        self.verdict_lbl.setText(f'Ожидается дальнейшее загрязнение на {100 - now_year_data / res * 100:.2f}%')
+                    else:
+                        self.verdict_lbl.setText(f'Ожидается спад загрязнения на {100 - now_year_data / res * 100:.2f}%')
+                else:
+                    raise ValueError
+        except ValueError:
+            self.forecast_lbl.setText(':(')
+            self.verdict_lbl.setText('')
+            return 0
 
 
 class FormWindow(QMainWindow):
@@ -697,7 +1220,7 @@ class FormWindow(QMainWindow):
 
     def send_data(self):
         """отправляет отзыв, добавляя его в базу данных"""
-        conn = sqlite3.connect(DATABASE)
+        conn = sqlite3.connect(USER_DATABASE)
         cur = conn.cursor()
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Icon.Critical)
@@ -705,7 +1228,6 @@ class FormWindow(QMainWindow):
         name = self.NameEdit.text()
         score = self.RatingEdit.text()
         feedb = self.FeedbEdit.toPlainText()
-        print(name)
         if '@' not in email or '.' not in email or email[0] in ['.', '@'] or email[-1] in ['.', '@']:
             msg.setText('Ошибка. Некорректная почта')
             msg.exec()
@@ -713,45 +1235,38 @@ class FormWindow(QMainWindow):
             msg.setText('Ошибка. Некорректный формат данных')
             msg.exec()
         else:
-            yn, ok_pressed = QInputDialog.getItem(self, "?", "Вы действительно хотите отрпавить отзыв?",
-                                                 ("Да", "Нет"), 0, False)
-            if ok_pressed and yn == 'Да':
-                cur.execute('''INSERT INTO feedbackss VALUES (?, ?, ?, ?)''',
-                            (email, name, score, feedb))
-                msg.setIcon(QMessageBox.Icon.Information)
-                msg.setText('Ваш отзыв отправлен!')
-                msg.exec()
-                conn.commit()
-                conn.close()
-                self.close()
+            cur.execute('''INSERT INTO feedbs VALUES (?, ?, ?, ?)''',
+                        (email, name, score, feedb))
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setText('Ваш отзыв отправлен!')
+            msg.exec()
+            conn.commit()
+            conn.close()
+            self.close()
 
     def cancel(self):
-        """стирает все написанные данные"""
         self.EmailEdit.setText('')
         self.NameEdit.setText('')
         self.RatingEdit.setText('')
-        self.FeedbEdit.setText('')
+        self.FeedbEdit.setPlainText('')
 
 
 class SecondWindoww(QMainWindow):
     def __init__(self):
-        """открывает окно для просмотра отзывов"""
         super().__init__()
         f = io.StringIO(sec_wind.strip())
         uic.loadUi(f, self)
-        self.load_table(DATABASE)
+        self.load_table(USER_DATABASE)
 
     def load_table(self, file):
-        """загружвет таблицу с отзывами"""
         conn = sqlite3.connect(file)
         cur = conn.cursor()
-        res = cur.execute('''SELECT * FROM feedbackss''').fetchall()
+        res = cur.execute('''SELECT * FROM feedbs''').fetchall()
         self.tableWidget.setColumnCount(4)
         self.tableWidget.setHorizontalHeaderLabels(['email', 'name', 'score', 'feedback'])
         self.tableWidget.setRowCount(0)
         for i, row in enumerate(res):
             self.tableWidget.setRowCount(self.tableWidget.rowCount() + 1)
-            print(row)
             for j, elem in enumerate(row):
                 self.tableWidget.setItem(i, j, QTableWidgetItem(str(elem)))
         self.tableWidget.resizeColumnsToContents()
@@ -759,7 +1274,6 @@ class SecondWindoww(QMainWindow):
 
 class Project(QMainWindow):
     def __init__(self):
-        """открывает главное окно"""
         super().__init__()
         file = io.StringIO(template.strip())
         uic.loadUi(file, self)
@@ -768,33 +1282,29 @@ class Project(QMainWindow):
         self.cities = ['Moсква', 'Санкт-Петербург']
         self.cities_maps = [MoscowMap, PeterMap]
         self.apply_btn.clicked.connect(self.apply_data)
+        self.leave_feedback.clicked.connect(self.leave_feedb)
+        self.see_feedback.clicked.connect(self.displ_feed)
+        self.forecast_btn.clicked.connect(self.see_forecast)
+        self.graph_btn.clicked.connect(self.show_graph)
         self.view = QWebEngineView()
+        self.air_check.setChecked(True)
+        self.noise_check.setChecked(True)
+        self.apply_data()
         self.view.setContentsMargins(0, 0, 0, 0)
         self.lay.addWidget(self.view)
         data = io.BytesIO()
         default = MoscowMap()
         default.map.save(data, close_file=False)
         self.view.setHtml(data.getvalue().decode())
-        self.see_feed.clicked.connect(self.displ_feed)
-        self.feedbackButton.clicked.connect(self.leave_feedb)
-        self.instr_btn.clicked.connect(self.instr)
-        self.cityLabel.setText(f'карта воздушного и шумового загрязнения\n города Москва')
 
     def initUI(self):
-        """корректирует виджеты"""
         self.statbar.move(20, 690)
 
         self.cityChoiceBox.addItem('Moсква')
         self.cityChoiceBox.addItem('Санкт-Петербург')
         self.cityChoiceBox.setDuplicatesEnabled(False)
 
-    def leave_feedb(self):
-        """вызывает функцию открытия окна для написания отзывов"""
-        self.ui2 = FormWindow()
-        self.ui2.show()
-
     def apply_data(self):
-        """применяет все выбранные пользователем изменения"""
         city = self.cityChoiceBox.currentText()
         if city in self.cities:
             city_map = self.cities_maps[self.cities.index(city)]()
@@ -802,25 +1312,66 @@ class Project(QMainWindow):
                 data = io.BytesIO()
                 city_map.map.save(data, close_file=False)
                 self.view.setHtml(data.getvalue().decode())
-                self.cityLabel.setText(f'карта воздушного и шумового загрязнения\n города {city}')
+                self.cityLabel.setText(f'{city}')
+                if self.air_check.isChecked():
+                    to_displ = ''
+                    for el in city_map.top_air:
+                        line = f'{el[1]} - {el[3]}\n'
+                        to_displ += line
+                    self.air_top.setText(to_displ[:-1])
+                    self.air_top.setStyleSheet('''QLabel {
+                                                border: 1px solid rgb(10, 10, 10);
+                                                border-radius: 8px;
+                                            }''')
+                if self.noise_check.isChecked():
+                    to_displ = ''
+                    for el in city_map.top_noise:
+                        line = f'{el[1]} - {el[2]}\n'
+                        to_displ += line
+                    self.noise_top.setText(to_displ[:-1])
+                    self.noise_top.setStyleSheet('''QLabel {
+                                                  border: 1px solid rgb(10, 10, 10);
+                                                  border-radius: 8px;
+                                              }''')
+                if not self.air_check.isChecked():
+                    self.air_top.setText('')
+                    self.air_top.setStyleSheet('')
+                if not self.noise_check.isChecked():
+                    self.noise_top.setText('')
+                    self.noise_top.setStyleSheet('')
             except Exception as exc:
                 print(exc)
         else:
-            self.cityLabel.setText(f'К сожалению, карты для города {city} еще нет, но мы работаем над этим')
+            self.lbl.setText(f'К сожалению, карты для города {city} еще нет, но мы работаем над этим')
+            self.cityLabel.setText('')
+
+    def leave_feedb(self):
+        self.ui2 = FormWindow()
+        self.ui2.show()
 
     def displ_feed(self):
-        """вызывает функцию открытия окна для простомтра отзывов"""
         self.ui = SecondWindoww()
         self.ui.show()
 
-    def instr(self):
-        """вызывает функцию открытия окна с инструкцией"""
-        self.ui3 = InstrWindow()
-        self.ui3.show()
+    def see_forecast(self):
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Critical)
+        year = self.dateEdit.date().year()
+        city = self.cityChoiceBox.currentText()
+        if year <= datetime.date.today().year:
+            msg.setText('Прогноз осущетсвляется только на будущие года, попробуй еще раз')
+            msg.exec()
+        else:
+            self.ui3 = ForecastWindow(year, abbreviations[city])
+            self.ui3.show()
+
+    def show_graph(self):
+        city = self.cityChoiceBox.currentText()
+        self.ui4 = ChartWindow(city)
+        self.ui4.show()
 
 
 def except_hook(cls, exception, traceback):
-    """отлавливает исключения и ошибки"""
     sys.__excepthook__(cls, exception, traceback)
 
 
